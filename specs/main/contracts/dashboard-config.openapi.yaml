@@ -1,0 +1,76 @@
+openapi: 3.0.3
+info:
+  title: Dashboard Configuration Contract
+  version: 1.0.0
+  description: >-
+    Logical REST contract for retrieving the active Generic Power BI dashboard
+    configuration record used by the web resource runtime.
+servers:
+  - url: https://{org}.crm.dynamics.com/api/data/v9.2
+    variables:
+      org:
+        default: your-org
+paths:
+  /dashboard-configurations/active:
+    get:
+      operationId: getActiveDashboardConfiguration
+      summary: Get active dashboard configuration
+      description: Returns the most recent active dashboard configuration.
+      responses:
+        '200':
+          description: Active configuration found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardConfiguration'
+        '404':
+          description: No active configuration found
+        '500':
+          description: Configuration retrieval failure
+components:
+  schemas:
+    DashboardConfiguration:
+      type: object
+      required:
+        - entity
+        - statecode
+        - tabs
+      properties:
+        entity:
+          type: string
+          example: genbbid_genericpbidashboard
+        statecode:
+          type: integer
+          enum: [0]
+        createdon:
+          type: string
+          format: date-time
+        workspacename:
+          type: string
+          nullable: true
+        brandcolorhex:
+          type: string
+          nullable: true
+          example: '#0078D4'
+        tabs:
+          type: array
+          minItems: 0
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/DashboardTab'
+    DashboardTab:
+      type: object
+      required:
+        - index
+        - title
+        - url
+      properties:
+        index:
+          type: integer
+          minimum: 1
+          maximum: 5
+        title:
+          type: string
+        url:
+          type: string
+          format: uri

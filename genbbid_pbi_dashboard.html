@@ -1,0 +1,329 @@
+<!--
+=============================================================================
+COMPONENT:    Generic Power BI Dashboard — Multi-Tab
+FILE:         genbbid_pbi_dashboard.html
+VERSION:      1.4.7
+AUTHOR:       bradlaw76
+LAST UPDATED: 2026-02-19
+ENVIRONMENT:  React 18 / Tailwind CSS / Dynamics 365 (Xrm.WebApi)
+PORTAL URL:   N/A (embedded via Dynamics 365 iframe)
+
+-----------------------------------------------------------------------------
+OVERVIEW
+-----------------------------------------------------------------------------
+Dataverse-driven, multi-tab Power BI dashboard embed. Reads configuration
+(tab names, embed URLs, brand color) from the genbbid_genericpbidashboard
+table and renders a tabbed React interface with dynamic iframe embedding.
+
+-----------------------------------------------------------------------------
+ARCHITECTURE
+-----------------------------------------------------------------------------
+- Data Source:      Dataverse via Xrm.WebApi
+- Entity/Table:     genbbid_genericpbidashboard
+- Auth Model:       Dynamics 365 authenticated session (Xrm context)
+- Rendering:        Client-side React 18 (in-browser Babel JSX)
+- API Pattern:      Xrm.WebApi.retrieveMultipleRecords
+- OData:            $top=1&$filter=statecode eq 0&$orderby=createdon desc
+
+-----------------------------------------------------------------------------
+FEATURES
+-----------------------------------------------------------------------------
+- Search:           N/A
+- Filtering:        Active record filter (statecode eq 0)
+- Sorting:          Most recent config (createdon desc)
+- Pagination:       N/A (single record retrieval)
+- Create:           N/A (admin-managed in Dataverse)
+- Update:           N/A (admin-managed in Dataverse)
+- Delete:           N/A
+- Validation:       Embed URL extraction from raw URL and iframe snippets
+- UX Notes:         Branded header, tabbed navigation, full-viewport iframes
+
+-----------------------------------------------------------------------------
+PREREQUISITES
+-----------------------------------------------------------------------------
+1. Dynamics 365 model-driven app with Xrm context
+2. Dataverse table: genbbid_genericpbidashboard (active record)
+3. Table fields:
+   - genbbid_workspacename (text)
+   - genbbid_brandcolorhex (text)
+   - genbbid_tab1name ... genbbid_tab5name (text)
+   - genbbid_tab1pbiembedcontent ... genbbid_tab5pbiembedcontent (text)
+4. User must have read access to the entity
+5. Power BI reports must have autoAuth or appropriate auth configured
+
+-----------------------------------------------------------------------------
+SECURITY MODEL
+-----------------------------------------------------------------------------
+- CSRF Token:      N/A (Xrm.WebApi handles auth internally)
+- Auth Scope:      Dynamics 365 authenticated users only
+- Data Exposure:   Limited to dashboard config fields
+- Role Dependency: Dynamics 365 security roles with entity read access
+
+-----------------------------------------------------------------------------
+STYLE ISOLATION
+-----------------------------------------------------------------------------
+- Root Scope ID:   #root
+- Tailwind CSS loaded via CDN (scoped by utility classes)
+- No global CSS overrides beyond body margin reset
+
+-----------------------------------------------------------------------------
+KNOWN LIMITATIONS
+-----------------------------------------------------------------------------
+- Maximum 5 tabs (hardcoded loop 1–5)
+- In-browser Babel transpilation — not suitable for production builds
+- Tailwind CDN — intended for internal/demo usage only
+- Client-side only — no SSR or pre-rendering
+
+-----------------------------------------------------------------------------
+TEST CASES
+-----------------------------------------------------------------------------
+✔ Load data from Dataverse without errors
+✔ Display branded header with workspace name
+✔ Render tab bar when 2+ tabs configured
+✔ Hide tab bar when only 1 tab configured
+✔ Switch iframe on tab click without page reload
+✔ Extract embed URL from raw URL string
+✔ Extract embed URL from iframe snippet string
+✔ Show error state when Xrm unavailable
+✔ Show error state when no active config found
+✔ Retry button re-fetches Dataverse data
+
+-----------------------------------------------------------------------------
+CHANGELOG
+-----------------------------------------------------------------------------
+v1.4.7  2026-02-19  Added SpeckKit component header block
+v1.4.7  Prior       Initial multi-tab dashboard with React/Tailwind
+
+-----------------------------------------------------------------------------
+NON-NEGOTIABLES (Architecture Contract)
+-----------------------------------------------------------------------------
+- Do NOT remove the Xrm context check — it is the auth gate.
+- Do NOT hardcode embed URLs — all config must come from Dataverse.
+- Do NOT bypass the statecode eq 0 filter — only active records.
+- Changes must be additive unless version increment approved.
+=============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generic Power BI Dashboard</title>
+
+  <!-- React -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+
+  <!-- Tailwind (internal/demo usage only) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Babel (in-browser JSX) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    /**
+     * Generic Power BI Dashboard
+     * Version: 1.4.7 (FIXED)
+     *
+     * Dataverse table (LOGICAL NAME – REQUIRED for Xrm.WebApi):
+     *   genbbid_genericpbidashboard
+     *
+     * Active logic:
+     *   statecode = 0
+     */
+
+    const { useState, useEffect } = React;
+
+    // ✅ MUST be the singular logical name
+    const ENTITY = "genbbid_genericpbidashboard";
+    const PREFIX = "genbbid_";
+
+    const getXrm = () => {
+      try {
+        return window.parent && window.parent.Xrm ? window.parent.Xrm : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const extractSrc = (value) => {
+      if (!value) return null;
+      const v = value.trim();
+      if (v.startsWith("<iframe")) {
+        const match = v.match(/src=["']([^"']+)["']/i);
+        return match ? match[1] : null;
+      }
+      return v;
+    };
+
+    const App = () => {
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [config, setConfig] = useState({
+        name: "",
+        brand: "#0078D4",
+        tabs: []
+      });
+      const [activeTab, setActiveTab] = useState(0);
+
+      useEffect(() => {
+        loadDashboard();
+      }, []);
+
+      const loadDashboard = async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+          const Xrm = getXrm();
+          if (!Xrm) {
+            throw new Error("Xrm context not available.");
+          }
+
+          const result = await Xrm.WebApi.retrieveMultipleRecords(
+            ENTITY,
+            "?$top=1&$filter=statecode eq 0&$orderby=createdon desc"
+          );
+
+          if (!result.entities || result.entities.length === 0) {
+            throw new Error("No active dashboard configuration found in Dataverse.");
+          }
+
+          const record = result.entities[0];
+
+          const tabs = [];
+          for (let i = 1; i <= 5; i++) {
+            const name = record[`${PREFIX}tab${i}name`];
+            const content = record[`${PREFIX}tab${i}pbiembedcontent`];
+            const url = extractSrc(content);
+
+            if (url) {
+              tabs.push({
+                title: name || `Tab ${i}`,
+                url
+              });
+            }
+          }
+
+          setConfig({
+            name: record[`${PREFIX}workspacename`] || "Power BI Dashboard",
+            brand: record[`${PREFIX}brandcolorhex`] || "#0078D4",
+            tabs
+          });
+
+        } catch (e) {
+          console.error("Dataverse Sync Error:", e);
+          setError(e.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      /* ---------- UI STATES ---------- */
+
+      if (loading) {
+        return (
+          <div className="h-screen flex items-center justify-center bg-slate-50">
+            <span className="text-xs uppercase tracking-widest text-slate-400">
+              Loading Dashboard…
+            </span>
+          </div>
+        );
+      }
+
+      if (error) {
+        return (
+          <div className="h-screen flex flex-col items-center justify-center bg-[#FFF8F8] px-8 text-center">
+            <h2 className="text-sm font-bold uppercase tracking-tight">Sync Failure</h2>
+            <p className="text-xs text-slate-500 mt-2">{error}</p>
+            <button
+              onClick={loadDashboard}
+              className="mt-6 px-6 py-2 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded"
+            >
+              Retry Connection
+            </button>
+          </div>
+        );
+      }
+
+      const currentTab = config.tabs[activeTab];
+
+      return (
+        <div className="flex flex-col h-screen bg-[#F3F2F1] text-[#323130]">
+
+          {/* Header */}
+          <header
+            className="h-12 px-5 flex items-center justify-between text-white shadow-md"
+            style={{ backgroundColor: config.brand }}
+          >
+            <h1 className="text-[11px] font-bold uppercase tracking-widest truncate">
+              {config.name}
+            </h1>
+            <button
+              onClick={loadDashboard}
+              className="text-[10px] font-bold uppercase tracking-widest"
+            >
+              Refresh
+            </button>
+          </header>
+
+          {/* Tabs */}
+          {config.tabs.length > 1 && (
+            <nav className="bg-white border-b border-[#EDEBE9] px-4 flex gap-1">
+              {config.tabs.map((tab, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveTab(idx)}
+                  className={`px-5 h-10 text-[11px] font-bold uppercase border-b-2 ${
+                    idx === activeTab
+                      ? "border-[#0078D4] text-[#323130]"
+                      : "border-transparent text-[#605E5C]"
+                  }`}
+                >
+                  {tab.title}
+                </button>
+              ))}
+            </nav>
+          )}
+
+          {/* Content */}
+          <main className="flex-1 bg-white">
+            {currentTab ? (
+              <iframe
+                src={currentTab.url}
+                className="w-full h-full border-none"
+                allowFullScreen
+                title={currentTab.title}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                No dashboard tabs configured.
+              </div>
+            )}
+          </main>
+
+          {/* Footer */}
+          <footer className="h-6 bg-[#F3F2F1] border-t border-[#EDEBE9] px-4 flex items-center justify-between text-[9px] uppercase tracking-widest text-[#605E5C]">
+            <span>Entity: {ENTITY}</span>
+            <span>Build v1.4.7</span>
+          </footer>
+
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

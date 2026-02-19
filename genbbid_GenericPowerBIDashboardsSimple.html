@@ -1,0 +1,105 @@
+<!--
+=============================================================================
+COMPONENT:    Generic Power BI Dashboard — Simple Embed
+FILE:         genbbid_GenericPowerBIDashboardsSimple.html
+VERSION:      1.0.0
+AUTHOR:       bradlaw76
+LAST UPDATED: 2026-02-19
+ENVIRONMENT:  Static HTML / Power Pages
+PORTAL URL:   N/A (embedded via Dynamics 365 iframe)
+
+-----------------------------------------------------------------------------
+OVERVIEW
+-----------------------------------------------------------------------------
+Minimal full-viewport iframe embed for a single Power BI report. No chrome,
+no tabs, no Dataverse dependency — just the raw report stretched to fill the
+browser window.
+
+-----------------------------------------------------------------------------
+ARCHITECTURE
+-----------------------------------------------------------------------------
+- Data Source:      None (static embed URL)
+- Entity/Table:     N/A
+- Auth Model:       Power BI autoAuth (delegated)
+- Rendering:        Static HTML iframe
+- API Pattern:      N/A
+- OData:            N/A
+
+-----------------------------------------------------------------------------
+FEATURES
+-----------------------------------------------------------------------------
+- Search:           N/A
+- Filtering:        N/A
+- Sorting:          N/A
+- Pagination:       N/A
+- Create:           N/A
+- Update:           N/A
+- Delete:           N/A
+- Validation:       N/A
+- UX Notes:         Full-viewport, zero-margin iframe embed
+
+-----------------------------------------------------------------------------
+PREREQUISITES
+-----------------------------------------------------------------------------
+1. Valid Power BI report embed URL with autoAuth enabled
+2. User must have Power BI report access
+
+-----------------------------------------------------------------------------
+SECURITY MODEL
+-----------------------------------------------------------------------------
+- CSRF Token:      N/A
+- Auth Scope:      Power BI autoAuth handles authentication
+- Data Exposure:   Governed by Power BI row-level security
+- Role Dependency: Power BI workspace roles
+
+-----------------------------------------------------------------------------
+KNOWN LIMITATIONS
+-----------------------------------------------------------------------------
+- Embed URL is hardcoded — must be manually updated per deployment
+- No dynamic configuration from Dataverse
+
+-----------------------------------------------------------------------------
+CHANGELOG
+-----------------------------------------------------------------------------
+v1.0.0  2026-02-19  Initial version with SpeckKit header
+
+-----------------------------------------------------------------------------
+NON-NEGOTIABLES (Architecture Contract)
+-----------------------------------------------------------------------------
+- Do NOT add chrome (header, footer, tabs) — use the multi-tab variant.
+- Iframe must remain borderless and full-viewport.
+=============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* This removes the default padding/margin so the frame touches the edges */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* Prevents double scrollbars */
+            background-color: #f4f4f4;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+    <iframe 
+        title="Call Center" 
+        src="https://app.powerbi.com/reportEmbed?reportId=3c7f8243-794d-49da-af22-04e71776c6bc&autoAuth=true&ctid=ee2d62ae-191c-4c86-9137-474d8bbe0a54" 
+        allowFullScreen="true">
+    </iframe>
+
+</body>
+</html>
